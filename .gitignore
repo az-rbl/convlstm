@@ -10,7 +10,7 @@ env/
 ENV/
 
 # Data & Datasets
-data/
+/data/
 RWF-2000/
 *.mp4
 *.avi
