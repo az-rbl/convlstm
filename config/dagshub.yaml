@@ -1,0 +1,7 @@
+# DagsHub integration settings
+dagshub:
+  repo_owner: "az"
+  repo_name: "convlstm-video-classification"
+  branch: "main"
+  remote_mlflow: true
+  sync_data_dvc: false

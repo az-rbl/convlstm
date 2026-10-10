@@ -1,0 +1,50 @@
+# Default configuration for ConvLSTM Video Classification with Change Detection
+data:
+  dataset_path: "RWF-2000"
+  train_split: "train"
+  val_split: "val"
+  sequence_length: 16       # Number of consecutive difference frames T
+  frame_stride: 2           # Stride when sampling frames
+  image_size: [112, 112]    # [height, width]
+  channels: 3               # 3-channel RGB frame differences
+  batch_size: 8
+  shuffle: true
+  num_workers: 4
+  classes:
+    NonFight: 0
+    Fight: 1
+
+model:
+  name: "DeepConvLSTM_ChangeDetection"
+  depth: 9                  # 9 stacked ConvLSTM layers
+  convlstm_filters: [32, 32, 32, 64, 64, 64, 128, 128, 128] # Filters per depth layer
+  kernel_sizes: [3, 3, 3, 3, 3, 3, 3, 3, 3]                  # Conv kernel sizes
+  dense_units: [128, 16, 1]                                  # FC layer sequence: 128 -> 16 -> 1
+  dropout_rate: 0.3
+  recurrent_dropout: 0.1
+  use_batch_norm: true
+
+training:
+  epochs: 30
+  learning_rate: 0.0001
+  optimizer: "adam"
+  loss: "binary_crossentropy"
+  metrics: ["accuracy", "AUC", "Precision", "Recall"]
+  early_stopping:
+    patience: 7
+    monitor: "val_loss"
+    mode: "min"
+  reduce_lr_on_plateau:
+    patience: 3
+    factor: 0.5
+    min_lr: 0.000001
+  checkpoint:
+    save_best_only: true
+    monitor: "val_accuracy"
+    mode: "max"
+    dir: "checkpoints"
+
+mlflow:
+  experiment_name: "rwf2000-convlstm-changedetection"
+  run_name: "convlstm-depth9-diff3ch"
+  log_models: true

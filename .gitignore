@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Data & Datasets
+data/
+RWF-2000/
+*.mp4
+*.avi
+*.mkv
+
+# Model checkpoints & artifacts
+checkpoints/
+models/*.h5
+models/*.keras
+*.pt
+*.pth
+
+# MLflow runs & logs
+mlruns/
+.mlflow/
+
+# DagsHub / Git cache
+.dagshub/
+.cache/
+
+# Environment variables & secrets
+.env
+.env.local
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
