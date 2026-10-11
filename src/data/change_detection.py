@@ -62,3 +62,7 @@ def compute_frame_differences_tf(
     # Assumes shape (T, H, W, C)
     diffs = float_frames[1:] - float_frames[:-1]
     return diffs
+
+
+# Alias for convenience
+compute_frame_differences = compute_frame_differences_numpy

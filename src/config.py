@@ -25,9 +25,13 @@ class DataConfig:
 
 @dataclass
 class ModelConfig:
-    name: str = "ConvLSTM_ChangeDetection"
-    filters: int = 9
-    kernel_size: List[int] = field(default_factory=lambda: [3, 3])
+    name: str = "TwoStream_Converging_Classifier"
+    type: str = "two_stream"
+    gamma: float = 0.67
+    conv_filters: int = 9
+    convlstm_diff_filters: int = 9
+    aggregator_filters: int = 32
+    depth_multiplier: int = 2
     dense_units: List[int] = field(default_factory=lambda: [128, 16, 1])
     dropout_rate: float = 0.3
     recurrent_dropout: float = 0.1

@@ -15,10 +15,14 @@ data:
     Fight: 1
 
 model:
-  name: "ConvLSTM_ChangeDetection"
-  filters: 9                # Single ConvLSTM layer with 9 filters
-  kernel_size: [3, 3]       # Conv kernel size
-  dense_units: [128, 16, 1] # FC layer sequence: 128 -> 16 -> 1
+  name: "TwoStream_Converging_Classifier"
+  type: "two_stream"               # "two_stream" or "single_stream"
+  gamma: 0.67                      # Gamma correction factor for pose stream
+  conv_filters: 9                  # 9-filter Conv2D layer on skeletons
+  convlstm_diff_filters: 9         # 9-filter ConvLSTM layer on frame differences
+  aggregator_filters: 32           # 32-filter temporal aggregator ConvLSTM
+  depth_multiplier: 2              # Depthwise conv post-processing (32*2 = 64)
+  dense_units: [128, 16, 1]        # FC layer sequence: 128 -> 16 -> 1
   dropout_rate: 0.3
   recurrent_dropout: 0.1
   use_batch_norm: true

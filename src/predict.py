@@ -1,4 +1,4 @@
-"""Single video inference script using change detection and trained ConvLSTM."""
+"""Single video inference script using two-stream ConvLSTM with pose & change detection."""
 
 import argparse
 import os
@@ -6,7 +6,8 @@ import keras
 import numpy as np
 
 from src.config import AppConfig
-from src.data.video_loader import extract_video_differences
+from src.data.pose_extractor import process_video_skeletons
+from src.data.video_loader import extract_video_differences, load_video_frames, sample_frames_uniformly
 
 
 def parse_args():
@@ -39,17 +40,43 @@ def predict():
     print(f"Loading model: {args.model_path}")
     model = keras.models.load_model(args.model_path)
 
-    print(f"Extracting consecutive frame differences from: {args.video}")
-    diffs = extract_video_differences(
-        video_path=args.video,
-        sequence_length=config.data.sequence_length,
-        target_size=(config.data.image_size[0], config.data.image_size[1]),
-    )
+    target_size = (config.data.image_size[0], config.data.image_size[1])
+    is_two_stream = isinstance(model.input_shape, list) and len(model.input_shape) == 2
 
-    # Expand batch dimension: (1, T, H, W, 3)
-    input_tensor = np.expand_dims(diffs, axis=0)
+    if is_two_stream:
+        print(f"[Inference] Two-stream model detected. Loading raw video and extracting pose...")
+        raw_frames = load_video_frames(args.video, target_size=target_size)
+        raw_sampled = sample_frames_uniformly(raw_frames, num_samples=config.data.sequence_length + 1)
+        raw_tensor = np.expand_dims(raw_sampled.astype(np.float32) / 255.0, axis=0)
 
-    prob = float(model.predict(input_tensor, verbose=0)[0][0])
+        # Check for pre-existing skeleton video or extract on the fly
+        base, ext = os.path.splitext(args.video)
+        skeleton_path = f"{base}_skeletons{ext}"
+        if os.path.exists(skeleton_path):
+            print(f"[Inference] Found pre-extracted skeletons at: {skeleton_path}")
+            skel_frames = load_video_frames(skeleton_path, target_size=target_size)
+            skel_sampled = sample_frames_uniformly(skel_frames, num_samples=config.data.sequence_length + 1)
+        else:
+            print("[Inference] Extracting skeletons with gamma correction (0.67)...")
+            skel_frames = process_video_skeletons(
+                video_path=args.video,
+                gamma=getattr(config.model, "gamma", 0.67),
+                target_size=target_size,
+            )
+            skel_sampled = sample_frames_uniformly(skel_frames, num_samples=config.data.sequence_length + 1)
+
+        skel_tensor = np.expand_dims(skel_sampled.astype(np.float32) / 255.0, axis=0)
+        model_inputs = [raw_tensor, skel_tensor]
+    else:
+        print(f"[Inference] Single-stream model detected. Extracting frame differences...")
+        diffs = extract_video_differences(
+            video_path=args.video,
+            sequence_length=config.data.sequence_length,
+            target_size=target_size,
+        )
+        model_inputs = np.expand_dims(diffs, axis=0)
+
+    prob = float(model.predict(model_inputs, verbose=0)[0][0])
     label = "Fight" if prob >= 0.5 else "NonFight"
 
     print("\n" + "=" * 40)

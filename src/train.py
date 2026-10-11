@@ -93,7 +93,8 @@ def train():
             f"Run: python -m src.data.download_dataset to download RWF-2000."
         )
 
-    print("\n[Data] Initializing train and validation sequences...")
+    is_two_stream = getattr(config.model, "type", "two_stream") == "two_stream"
+    print(f"\n[Data] Initializing train and validation sequences (two_stream={is_two_stream})...")
     train_seq = RWF2000Sequence(
         split_dir=train_dir,
         sequence_length=config.data.sequence_length,
@@ -101,6 +102,7 @@ def train():
         batch_size=config.data.batch_size,
         shuffle=config.data.shuffle,
         augment=True,
+        two_stream=is_two_stream,
     )
     val_seq = RWF2000Sequence(
         split_dir=val_dir,
@@ -109,14 +111,19 @@ def train():
         batch_size=config.data.batch_size,
         shuffle=False,
         augment=False,
+        two_stream=is_two_stream,
     )
 
     print(f"[Data] Train samples: {len(train_seq.samples)} ({len(train_seq)} batches)")
     print(f"[Data] Val samples:   {len(val_seq.samples)} ({len(val_seq)} batches)")
 
     # 3. Build Model
-    print("\n[Model] Building Deep ConvLSTM Model...")
-    model = build_model_from_config(config)
+    print(f"\n[Model] Building Model (type: {'TwoStream' if is_two_stream else 'SingleStream'})...")
+    if is_two_stream:
+        from src.models.two_stream import build_two_stream_from_config
+        model = build_two_stream_from_config(config)
+    else:
+        model = build_model_from_config(config)
     model.summary()
 
     # 4. Compile Model
