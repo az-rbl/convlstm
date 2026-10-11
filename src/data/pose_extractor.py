@@ -104,22 +104,31 @@ class SkeletonRenderer:
         except Exception as e:
             print(f"[Warning] Failed to initialize MediaPipe PoseLandmarker: {e}. Falling back to blank canvas.")
 
-    def render_on_black(self, frame_bgr: np.ndarray) -> np.ndarray:
-        """Extracts all human poses and renders their colored skeletons over a black canvas.
+    def render_on_black(
+        self,
+        frame_bgr: np.ndarray,
+        target_size: Optional[Tuple[int, int]] = None,
+    ) -> np.ndarray:
+        """Extracts human poses on the uncompressed native frame, then renders
+
+        their colored skeletons directly onto a black canvas of target_size (H, W).
 
         Args:
-            frame_bgr: Single input frame in BGR format, uint8.
+            frame_bgr: Single input frame in BGR format at native resolution, uint8.
+            target_size: Desired (height, width) of output canvas. If None, uses frame_bgr size.
 
         Returns:
-            black_canvas: Image of same shape (H, W, 3) containing only rendered skeletons.
+            black_canvas: Image of shape (target_h, target_w, 3) containing rendered skeletons.
         """
-        h, w, c = frame_bgr.shape
-        # Canvas strictly filled with zeros (solid black background)
-        black_canvas = np.zeros((h, w, c), dtype=np.uint8)
+        orig_h, orig_w, c = frame_bgr.shape
+        out_h, out_w = target_size if target_size else (orig_h, orig_w)
+        # Canvas strictly filled with zeros (solid black background at target resolution)
+        black_canvas = np.zeros((out_h, out_w, c), dtype=np.uint8)
 
         if self.landmarker is None:
             return black_canvas
 
+        # Process at native uncompressed resolution for highest landmark sensitivity
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=frame_rgb)
 
@@ -137,16 +146,19 @@ class SkeletonRenderer:
                 lm = person_landmarks[idx]
                 visibility = getattr(lm, "visibility", 1.0) or 1.0
                 presence = getattr(lm, "presence", 1.0) or 1.0
-                return (int(lm.x * w), int(lm.y * h)), min(visibility, presence)
+                # Directly map normalized coordinates [0.0, 1.0] to target canvas resolution
+                px = int(np.clip(lm.x, 0.0, 1.0) * out_w)
+                py = int(np.clip(lm.y, 0.0, 1.0) * out_h)
+                return (px, py), min(visibility, presence)
 
-            # Draw bones for this person
+            # Draw bones for this person directly onto target canvas
             for idx1, idx2, color in CONNECTIONS:
                 pt1, score1 = get_pt(idx1)
                 pt2, score2 = get_pt(idx2)
                 if score1 > 0.4 and score2 > 0.4:
                     cv2.line(black_canvas, pt1, pt2, color, self.line_thickness)
 
-            # Draw joint dots
+            # Draw joint dots directly onto target canvas
             for idx in range(len(person_landmarks)):
                 pt, score = get_pt(idx)
                 if score > 0.4:
@@ -171,17 +183,17 @@ def process_video_skeletons(
 ) -> np.ndarray:
     """Reads a video, applies gamma correction (0.67), extracts multi-person skeletons
 
-    on a black background, and writes the resulting skeleton video to output_path.
+    on native resolution, and writes the resulting skeleton video rendered at target_size.
 
     Args:
         video_path: Input raw video file path.
         output_path: Path to write the output skeleton video.
         gamma: Gamma correction factor (default: 0.67).
-        target_size: (H, W) tuple to resize frames.
+        target_size: (H, W) tuple to render skeleton frames.
         renderer: Optional reusable SkeletonRenderer instance.
 
     Returns:
-        Array of rendered skeleton frames (T, H, W, 3) in RGB format, uint8.
+        Array of rendered skeleton frames (T, target_H, target_W, 3) in RGB format, uint8.
     """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -190,7 +202,7 @@ def process_video_skeletons(
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    out_w, out_h = target_size[::-1] if target_size else (orig_w, orig_h)
+    out_h, out_w = target_size if target_size else (orig_h, orig_w)
 
     writer = None
     if output_path:
@@ -211,15 +223,11 @@ def process_video_skeletons(
             if not ret:
                 break
 
-            # 1. Resize if required
-            if target_size and (frame.shape[0], frame.shape[1]) != (out_h, out_w):
-                frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+            # 1. Apply gamma correction directly on the native full-resolution frame
+            enhanced_native = apply_gamma_correction(frame, gamma=gamma)
 
-            # 2. Gamma correction (contrast enhancement for surveillance scenes)
-            enhanced = apply_gamma_correction(frame, gamma=gamma)
-
-            # 3. Multi-person pose estimation on black background
-            skel_bgr = renderer.render_on_black(enhanced)
+            # 2. Extract multi-person poses on native resolution, rendering directly to target_size black canvas
+            skel_bgr = renderer.render_on_black(enhanced_native, target_size=(out_h, out_w))
 
             if writer:
                 writer.write(skel_bgr)

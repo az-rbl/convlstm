@@ -32,13 +32,18 @@ def test_gamma_correction_values():
 
 def test_skeleton_renderer_black_background():
     renderer = SkeletonRenderer()
-    dummy_frame = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
-    rendered = renderer.render_on_black(dummy_frame)
+    dummy_frame = np.random.randint(0, 256, (240, 320, 3), dtype=np.uint8)
+    
+    # 1. Native rendering
+    rendered_native = renderer.render_on_black(dummy_frame)
+    assert rendered_native.shape == (240, 320, 3)
+    assert rendered_native.dtype == np.uint8
 
-    assert rendered.shape == (64, 64, 3)
-    assert rendered.dtype == np.uint8
-    # Canvas background must be solid black (0)
-    assert np.mean(rendered == 0) > 0.8
+    # 2. Direct rendering to target canvas (112, 112) without image downsampling
+    rendered_target = renderer.render_on_black(dummy_frame, target_size=(112, 112))
+    assert rendered_target.shape == (112, 112, 3)
+    assert rendered_target.dtype == np.uint8
+    assert np.mean(rendered_target == 0) > 0.8
     renderer.close()
 
 
