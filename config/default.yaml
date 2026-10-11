@@ -1,6 +1,6 @@
 # Default configuration for ConvLSTM Video Classification with Change Detection
 data:
-  dataset_path: "RWF-2000"
+  dataset_path: "RWF-2000/RWF-2000"
   train_split: "train"
   val_split: "val"
   sequence_length: 16       # Number of consecutive difference frames T
