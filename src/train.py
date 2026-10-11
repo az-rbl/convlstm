@@ -74,7 +74,12 @@ def train():
     print(f"Dataset path: {config.data.dataset_path}")
     print(f"Sequence length (diff frames): {config.data.sequence_length}")
     print(f"Image dimensions: {config.data.image_size}")
-    print(f"ConvLSTM Filters: {config.model.filters}")
+    is_two_stream = getattr(config.model, "type", "two_stream") == "two_stream"
+    if is_two_stream:
+        print(f"Pose Conv Filters: {getattr(config.model, 'conv_filters', 9)} | Change ConvLSTM Filters: {getattr(config.model, 'convlstm_diff_filters', 9)}")
+        print(f"Aggregator Filters: {getattr(config.model, 'aggregator_filters', 32)} | Depth Multiplier: {getattr(config.model, 'depth_multiplier', 2)}")
+    else:
+        print(f"ConvLSTM Filters: {getattr(config.model, 'filters', 9)}")
     print(f"Dense sequence: {config.model.dense_units}")
     print(f"Batch size: {config.data.batch_size} | Epochs: {config.training.epochs}")
 
@@ -83,9 +88,16 @@ def train():
         experiment_name=config.mlflow.experiment_name
     )
 
-    # 2. Prepare Datasets
-    train_dir = os.path.join(config.data.dataset_path, config.data.train_split)
-    val_dir = os.path.join(config.data.dataset_path, config.data.val_split)
+    # 2. Prepare Datasets (Auto-detect nested RWF-2000 structure if present)
+    dataset_path = config.data.dataset_path
+    if not os.path.exists(os.path.join(dataset_path, config.data.train_split)):
+        nested_candidate = os.path.join(dataset_path, "RWF-2000")
+        if os.path.exists(os.path.join(nested_candidate, config.data.train_split)):
+            dataset_path = nested_candidate
+            config.data.dataset_path = dataset_path
+
+    train_dir = os.path.join(dataset_path, config.data.train_split)
+    val_dir = os.path.join(dataset_path, config.data.val_split)
 
     if not os.path.exists(train_dir) or not os.path.exists(val_dir):
         raise FileNotFoundError(
@@ -93,18 +105,18 @@ def train():
             f"Run: python -m src.data.download_dataset to download RWF-2000."
         )
 
-    is_two_stream = getattr(config.model, "type", "two_stream") == "two_stream"
     print(f"\n[Data] Initializing train and validation sequences (two_stream={is_two_stream})...")
-    skeletons_train_dir = (
-        os.path.join(config.data.skeletons_path, config.data.train_split)
-        if hasattr(config.data, "skeletons_path") and config.data.skeletons_path
-        else None
-    )
-    skeletons_val_dir = (
-        os.path.join(config.data.skeletons_path, config.data.val_split)
-        if hasattr(config.data, "skeletons_path") and config.data.skeletons_path
-        else None
-    )
+    skeletons_path = getattr(config.data, "skeletons_path", None)
+    skeletons_train_dir = None
+    skeletons_val_dir = None
+    if skeletons_path:
+        if not os.path.exists(os.path.join(skeletons_path, config.data.train_split)):
+            nested_skel = os.path.join(skeletons_path, "RWF-2000")
+            if os.path.exists(os.path.join(nested_skel, config.data.train_split)):
+                skeletons_path = nested_skel
+                config.data.skeletons_path = skeletons_path
+        skeletons_train_dir = os.path.join(skeletons_path, config.data.train_split)
+        skeletons_val_dir = os.path.join(skeletons_path, config.data.val_split)
 
     train_seq = RWF2000Sequence(
         split_dir=train_dir,
@@ -184,9 +196,8 @@ def train():
     # 6. Execute Training within MLflow Run
     with mlflow.start_run(run_name=config.mlflow.run_name):
         # Log Hyperparameters
-        mlflow.log_params({
-            "filters": config.model.filters,
-            "kernel_size": str(config.model.kernel_size),
+        model_params = {
+            "model_type": getattr(config.model, "type", "two_stream"),
             "dense_units": str(config.model.dense_units),
             "sequence_length": config.data.sequence_length,
             "image_size": str(config.data.image_size),
@@ -194,7 +205,21 @@ def train():
             "learning_rate": config.training.learning_rate,
             "optimizer": config.training.optimizer,
             "dropout_rate": config.model.dropout_rate,
-        })
+        }
+        if is_two_stream:
+            model_params.update({
+                "conv_filters": getattr(config.model, "conv_filters", 9),
+                "convlstm_diff_filters": getattr(config.model, "convlstm_diff_filters", 9),
+                "aggregator_filters": getattr(config.model, "aggregator_filters", 32),
+                "depth_multiplier": getattr(config.model, "depth_multiplier", 2),
+                "gamma": getattr(config.model, "gamma", 0.67),
+            })
+        else:
+            model_params.update({
+                "filters": getattr(config.model, "filters", 9),
+                "kernel_size": str(getattr(config.model, "kernel_size", (3, 3))),
+            })
+        mlflow.log_params(model_params)
 
         class MLflowEpochCallback(callbacks.Callback):
             def on_epoch_end(self, epoch, logs=None):

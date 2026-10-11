@@ -85,12 +85,26 @@ class RWF2000Sequence(keras.utils.Sequence):
 
     def _find_skeleton_path(self, video_path: str) -> Optional[str]:
         """Finds the corresponding skeleton video in tidy mirrored folder or legacy local file."""
-        # 1. Check tidy separate skeletons directory (e.g. RWF-2000_skeletons/train/Fight/video.avi)
+        # 1. Check tidy separate skeletons directory
         if self.skeletons_dir:
             rel_path = os.path.relpath(video_path, self.split_dir)
-            mirrored_path = os.path.join(self.skeletons_dir, rel_path)
-            if os.path.exists(mirrored_path):
-                return mirrored_path
+            split_name = os.path.basename(self.split_dir)
+
+            candidates = [
+                os.path.join(self.skeletons_dir, rel_path),
+                os.path.join(self.skeletons_dir, "RWF-2000", rel_path),
+                os.path.join(self.skeletons_dir, split_name, rel_path),
+                os.path.join(self.skeletons_dir, "RWF-2000", split_name, rel_path),
+                os.path.join(
+                    os.path.dirname(self.skeletons_dir),
+                    "RWF-2000",
+                    os.path.basename(self.skeletons_dir),
+                    rel_path,
+                ),
+            ]
+            for cand in candidates:
+                if os.path.exists(cand):
+                    return cand
 
         # 2. Check legacy in-place file (e.g. video_skeletons.avi)
         base, ext = os.path.splitext(video_path)
@@ -119,7 +133,7 @@ class RWF2000Sequence(keras.utils.Sequence):
 
         return raw_tensor, skeleton_tensor
 
-    def __getitem__(self, idx: int) -> Union[Tuple[List[np.ndarray], np.ndarray], Tuple[np.ndarray, np.ndarray]]:
+    def __getitem__(self, idx: int) -> Union[Tuple[Tuple[np.ndarray, np.ndarray], np.ndarray], Tuple[np.ndarray, np.ndarray]]:
         batch_indices = self.indices[
             idx * self.batch_size : (idx + 1) * self.batch_size
         ]
@@ -168,7 +182,7 @@ class RWF2000Sequence(keras.utils.Sequence):
         if self.two_stream:
             x_raw = np.array(batch_raw, dtype=np.float32)
             x_skel = np.array(batch_skel, dtype=np.float32)
-            return [x_raw, x_skel], y
+            return (x_raw, x_skel), y
         else:
             x_diff = np.array(batch_diff, dtype=np.float32)
             return x_diff, y

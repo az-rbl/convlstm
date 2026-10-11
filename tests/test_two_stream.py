@@ -130,3 +130,49 @@ def test_tidy_skeleton_directory_lookup():
         found_path = seq._find_skeleton_path(raw_vid)
         assert found_path == skel_vid
         assert os.path.exists(found_path)
+
+        # Verify batch return structure is tuple (not list) to prevent TypeError with tf.data.Dataset
+        batch_inputs, batch_y = seq[0]
+        assert isinstance(batch_inputs, tuple)
+        assert not isinstance(batch_inputs, list)
+        assert len(batch_inputs) == 2
+        assert batch_inputs[0].shape == (1, 4, 32, 32, 3)
+        assert batch_inputs[1].shape == (1, 4, 32, 32, 3)
+        assert batch_y.shape == (1,)
+
+
+def test_nested_skeleton_directory_lookup():
+    """Verify lookup succeeds when skeleton directory mirrors the nested RWF-2000 structure."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        raw_train = os.path.join(tmp_dir, "RWF-2000", "train")
+        # Mirrored nested structure: RWF-2000_skeletons/RWF-2000/train
+        skel_train = os.path.join(tmp_dir, "RWF-2000_skeletons", "RWF-2000", "train")
+        os.makedirs(os.path.join(raw_train, "Fight"), exist_ok=True)
+        os.makedirs(os.path.join(skel_train, "Fight"), exist_ok=True)
+
+        raw_vid = os.path.join(raw_train, "Fight", "vid_01.avi")
+        skel_vid = os.path.join(skel_train, "Fight", "vid_01.avi")
+
+        fourcc = cv2.VideoWriter_fourcc(*"XVID")
+        w_raw = cv2.VideoWriter(raw_vid, fourcc, 10, (32, 32))
+        w_skel = cv2.VideoWriter(skel_vid, fourcc, 10, (32, 32))
+        for _ in range(5):
+            w_raw.write(np.zeros((32, 32, 3), dtype=np.uint8))
+            w_skel.write(np.full((32, 32, 3), 255, dtype=np.uint8))
+        w_raw.release()
+        w_skel.release()
+
+        # skeletons_dir passed as top-level without subfolder
+        seq = RWF2000Sequence(
+            split_dir=raw_train,
+            skeletons_dir=os.path.join(tmp_dir, "RWF-2000_skeletons"),
+            sequence_length=3,
+            target_size=(32, 32),
+            batch_size=1,
+            two_stream=True,
+        )
+
+        found_path = seq._find_skeleton_path(raw_vid)
+        assert found_path == skel_vid
+        assert os.path.exists(found_path)
+
