@@ -15,11 +15,11 @@ A spatiotemporal video classification framework tailored for violence detection 
    - Rather than passing raw video frames, the network processes signed inter-frame consecutive differences:
      $$\Delta I_t = I_{t+1} - I_t, \quad t \in \{1, \dots, T\}$$
    - All **3 RGB channels** are retained to preserve directional color/intensity changes, removing static backgrounds and highlighting movement.
-2. **Deep ConvLSTM Backbone (Depth = 9)**:
-   - 9 stacked recurrent `ConvLSTM2D` layers preserving 2D spatial feature topology across temporal steps.
-   - Batch normalization and spatial downsampling blocks interleaved to optimize receptive field and gradient flow.
+2. **ConvLSTM Backbone**:
+   - Single recurrent `ConvLSTM2D` layer with **9 filters**, outputting shape `(B, H, W, 9)`.
+   - Captures spatiotemporal motion features directly from the frame difference sequence.
 3. **Classification Head**:
-   - Global Average Pooling (GAP) collapsing spatial dimensions: $(B, H', W', C) \to (B, C)$.
+   - Global Average Pooling (GAP) collapsing spatial dimensions: $(B, H, W, 9) \to (B, 9)$.
    - Multi-layer fully connected classifier:
      $$\mathbf{GAP} \longrightarrow \mathbf{Dense(128)} \longrightarrow \mathbf{Dense(16)} \longrightarrow \mathbf{Dense(1)} \text{ (Sigmoid)}$$
 

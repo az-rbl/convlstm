@@ -74,7 +74,7 @@ def train():
     print(f"Dataset path: {config.data.dataset_path}")
     print(f"Sequence length (diff frames): {config.data.sequence_length}")
     print(f"Image dimensions: {config.data.image_size}")
-    print(f"ConvLSTM Depth: {config.model.depth}")
+    print(f"ConvLSTM Filters: {config.model.filters}")
     print(f"Dense sequence: {config.model.dense_units}")
     print(f"Batch size: {config.data.batch_size} | Epochs: {config.training.epochs}")
 
@@ -165,8 +165,8 @@ def train():
     with mlflow.start_run(run_name=config.mlflow.run_name):
         # Log Hyperparameters
         mlflow.log_params({
-            "depth": config.model.depth,
-            "filters": str(config.model.convlstm_filters),
+            "filters": config.model.filters,
+            "kernel_size": str(config.model.kernel_size),
             "dense_units": str(config.model.dense_units),
             "sequence_length": config.data.sequence_length,
             "image_size": str(config.data.image_size),

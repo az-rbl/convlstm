@@ -25,14 +25,9 @@ class DataConfig:
 
 @dataclass
 class ModelConfig:
-    name: str = "DeepConvLSTM_ChangeDetection"
-    depth: int = 9
-    convlstm_filters: List[int] = field(
-        default_factory=lambda: [32, 32, 32, 64, 64, 64, 128, 128, 128]
-    )
-    kernel_sizes: List[int] = field(
-        default_factory=lambda: [3, 3, 3, 3, 3, 3, 3, 3, 3]
-    )
+    name: str = "ConvLSTM_ChangeDetection"
+    filters: int = 9
+    kernel_size: List[int] = field(default_factory=lambda: [3, 3])
     dense_units: List[int] = field(default_factory=lambda: [128, 16, 1])
     dropout_rate: float = 0.3
     recurrent_dropout: float = 0.1

@@ -15,11 +15,10 @@ data:
     Fight: 1
 
 model:
-  name: "DeepConvLSTM_ChangeDetection"
-  depth: 9                  # 9 stacked ConvLSTM layers
-  convlstm_filters: [32, 32, 32, 64, 64, 64, 128, 128, 128] # Filters per depth layer
-  kernel_sizes: [3, 3, 3, 3, 3, 3, 3, 3, 3]                  # Conv kernel sizes
-  dense_units: [128, 16, 1]                                  # FC layer sequence: 128 -> 16 -> 1
+  name: "ConvLSTM_ChangeDetection"
+  filters: 9                # Single ConvLSTM layer with 9 filters
+  kernel_size: [3, 3]       # Conv kernel size
+  dense_units: [128, 16, 1] # FC layer sequence: 128 -> 16 -> 1
   dropout_rate: 0.3
   recurrent_dropout: 0.1
   use_batch_norm: true

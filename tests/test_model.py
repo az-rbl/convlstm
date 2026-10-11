@@ -1,4 +1,4 @@
-"""Unit tests for Change Detection pipeline and Deep ConvLSTM Model."""
+"""Unit tests for Change Detection pipeline and ConvLSTM (single layer, 9 filters) model."""
 
 import numpy as np
 import pytest
@@ -20,25 +20,34 @@ def test_frame_differences_shape_and_range():
     assert np.all(diffs >= -1.0) and np.all(diffs <= 1.0)
 
 
-def test_convlstm_depth_9_model_architecture():
-    # Build a depth-9 model with small spatial shape for rapid test
+def test_single_convlstm_9_filters_architecture():
+    # Build single ConvLSTM model with 9 filters
     model = build_convlstm_model(
-        input_shape=(4, 32, 32, 3),
-        depth=9,
-        filters=[8] * 9,
+        input_shape=(16, 112, 112, 3),
+        filters=9,
+        kernel_size=(3, 3),
         dense_units=[128, 16, 1],
         use_batch_norm=True,
     )
 
     # Check input and output shapes
-    assert model.input_shape == (None, 4, 32, 32, 3)
+    assert model.input_shape == (None, 16, 112, 112, 3)
     assert model.output_shape == (None, 1)
 
-    # Verify that there are exactly 9 ConvLSTM2D layers
+    # Verify that there is EXACTLY 1 ConvLSTM2D layer with 9 filters
     convlstm_layers = [
-        layer for layer in model.layers if "conv_lstm" in layer.name or "convlstm" in layer.name
+        layer for layer in model.layers if isinstance(layer, tf.keras.layers.ConvLSTM2D)
     ]
-    assert len(convlstm_layers) == 9
+    assert len(convlstm_layers) == 1
+    assert convlstm_layers[0].filters == 9
+
+    # Verify GlobalAveragePooling2D is present
+    gap_layers = [
+        layer
+        for layer in model.layers
+        if isinstance(layer, tf.keras.layers.GlobalAveragePooling2D)
+    ]
+    assert len(gap_layers) == 1
 
     # Verify dense layers sequence: 128 -> 16 -> 1
     dense_layers = [
@@ -54,8 +63,8 @@ def test_dummy_forward_pass_no_training():
     # Run a single forward pass with synthetic dummy batch (no training performed)
     model = build_convlstm_model(
         input_shape=(4, 32, 32, 3),
-        depth=9,
-        filters=[8] * 9,
+        filters=9,
+        kernel_size=(3, 3),
         dense_units=[128, 16, 1],
     )
 
