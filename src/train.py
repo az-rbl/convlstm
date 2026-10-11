@@ -95,8 +95,20 @@ def train():
 
     is_two_stream = getattr(config.model, "type", "two_stream") == "two_stream"
     print(f"\n[Data] Initializing train and validation sequences (two_stream={is_two_stream})...")
+    skeletons_train_dir = (
+        os.path.join(config.data.skeletons_path, config.data.train_split)
+        if hasattr(config.data, "skeletons_path") and config.data.skeletons_path
+        else None
+    )
+    skeletons_val_dir = (
+        os.path.join(config.data.skeletons_path, config.data.val_split)
+        if hasattr(config.data, "skeletons_path") and config.data.skeletons_path
+        else None
+    )
+
     train_seq = RWF2000Sequence(
         split_dir=train_dir,
+        skeletons_dir=skeletons_train_dir,
         sequence_length=config.data.sequence_length,
         target_size=(config.data.image_size[0], config.data.image_size[1]),
         batch_size=config.data.batch_size,
@@ -106,6 +118,7 @@ def train():
     )
     val_seq = RWF2000Sequence(
         split_dir=val_dir,
+        skeletons_dir=skeletons_val_dir,
         sequence_length=config.data.sequence_length,
         target_size=(config.data.image_size[0], config.data.image_size[1]),
         batch_size=config.data.batch_size,

@@ -12,6 +12,7 @@ ENV/
 # Data & Datasets
 /data/
 RWF-2000/
+RWF-2000_skeletons/
 *.mp4
 *.avi
 *.mkv
@@ -20,6 +21,7 @@ RWF-2000/
 checkpoints/
 models/*.h5
 models/*.keras
+models/*.task
 *.pt
 *.pth
 

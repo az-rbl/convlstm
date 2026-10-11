@@ -1,75 +1,113 @@
-"""Batch offline preprocessing utility for generating skeleton videos on black backgrounds.
+"""Batch offline preprocessing utility to render skeletons into a dedicated, tidy directory structure.
 
-Applies:
-  1. Gamma correction (gamma = 0.67) to enhance contrast.
-  2. Pose estimation rendering multi-person skeletons with distinct colored limbs
-     over a solid black background.
-  3. Writes paired `*_skeletons.avi` alongside original videos.
+Preserves dataset cleanliness by mirroring the input folder hierarchy into a separate
+output directory (e.g. RWF-2000/ -> RWF-2000_skeletons/), keeping raw video and preprocessed
+skeleton videos completely separate.
 """
 
 import argparse
 import glob
 import os
-from concurrent.futures import ProcessPoolExecutor
+from typing import Tuple
 from tqdm import tqdm
 
-from src.data.pose_extractor import process_video_skeletons
-
-
-def process_single_video(video_path: str, gamma: float = 0.67, target_size=(112, 112)) -> str:
-    """Processes a single video into its corresponding _skeletons.avi pair."""
-    base, ext = os.path.splitext(video_path)
-    output_path = f"{base}_skeletons{ext}"
-
-    if os.path.exists(output_path):
-        return f"[Skipped] Already exists: {output_path}"
-
-    try:
-        process_video_skeletons(
-            video_path=video_path,
-            output_path=output_path,
-            gamma=gamma,
-            target_size=target_size,
-        )
-        return f"[Done] {output_path}"
-    except Exception as e:
-        return f"[Error] {video_path}: {e}"
+from src.data.pose_extractor import SkeletonRenderer, process_video_skeletons
 
 
 def preprocess_dataset(
     dataset_dir: str = "RWF-2000",
+    output_dir: str = "RWF-2000_skeletons",
     gamma: float = 0.67,
     image_size: int = 112,
-    num_workers: int = 2,
+    num_poses: int = 4,
 ):
-    """Finds all non-skeleton video files in dataset_dir and renders skeleton pairs."""
-    patterns = [
-        os.path.join(dataset_dir, "**", "*.avi"),
-        os.path.join(dataset_dir, "**", "*.mp4"),
-    ]
+    """Discovers all videos in dataset_dir and renders corresponding multi-person skeletons
+
+    into mirrored directories inside output_dir.
+
+    Args:
+        dataset_dir: Root raw video directory (e.g. 'RWF-2000').
+        output_dir: Dedicated directory for preprocessed skeleton videos (e.g. 'RWF-2000_skeletons').
+        gamma: Gamma correction factor (default: 0.67).
+        image_size: Spatial resolution (H=W).
+        num_poses: Max number of people detected per frame.
+    """
+    valid_extensions = ("*.avi", "*.mp4", "*.mkv", "*.mov")
     all_videos = []
-    for pat in patterns:
-        all_videos.extend(glob.glob(pat, recursive=True))
+    for ext in valid_extensions:
+        all_videos.extend(glob.glob(os.path.join(dataset_dir, "**", ext), recursive=True))
+        all_videos.extend(glob.glob(os.path.join(dataset_dir, "**", ext.upper()), recursive=True))
 
-    # Filter out already existing skeleton videos
-    source_videos = [v for v in all_videos if not v.endswith("_skeletons.avi") and not v.endswith("_skeletons.mp4")]
-    source_videos.sort()
+    all_videos = sorted(list(set(all_videos)))
+    if not all_videos:
+        print(f"[!] No video files found in: {dataset_dir}")
+        return
 
-    print(f"Found {len(source_videos)} videos to process in: {dataset_dir}")
-    print(f"Applying Gamma Correction: gamma={gamma} | Canvas Size: {image_size}x{image_size}")
+    print("==================================================")
+    print("  Tidy Skeleton Preprocessing Pipeline")
+    print("==================================================")
+    print(f"Source Directory: {dataset_dir}")
+    print(f"Target Directory: {output_dir} (Separated & Clean)")
+    print(f"Videos Found:     {len(all_videos)}")
+    print(f"Gamma Correction: {gamma}")
+    print(f"Target Size:      {image_size}x{image_size}")
+    print(f"Max Poses/Frame:  {num_poses}")
+    print("==================================================")
 
-    target_size = (image_size, image_size)
-    for v in tqdm(source_videos, desc="Rendering skeletons on black background"):
-        process_single_video(v, gamma=gamma, target_size=target_size)
+    target_size: Tuple[int, int] = (image_size, image_size)
+    renderer = SkeletonRenderer(num_poses=num_poses)
 
-    print("\nSkeleton preprocessing completed successfully!")
+    skipped = 0
+    processed = 0
+
+    try:
+        for video_path in tqdm(all_videos, desc="Rendering skeletons on black background"):
+            # Compute mirrored relative path
+            rel_path = os.path.relpath(video_path, dataset_dir)
+            out_video_path = os.path.join(output_dir, rel_path)
+
+            if os.path.exists(out_video_path):
+                skipped += 1
+                continue
+
+            try:
+                process_video_skeletons(
+                    video_path=video_path,
+                    output_path=out_video_path,
+                    gamma=gamma,
+                    target_size=target_size,
+                    renderer=renderer,
+                )
+                processed += 1
+            except Exception as e:
+                print(f"\n[Error] Processing {video_path}: {e}")
+    finally:
+        renderer.close()
+
+    print(f"\nPreprocessing finished! Processed: {processed}, Already existed: {skipped}")
+    print(f"Clean skeleton dataset stored in: {output_dir}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Preprocess videos into skeleton videos on black background.")
-    parser.add_argument("--dataset_dir", type=str, default="RWF-2000", help="Root dataset directory")
+    parser = argparse.ArgumentParser(
+        description="Mirror raw dataset into clean, dedicated skeleton video directory."
+    )
+    parser.add_argument("--dataset_dir", type=str, default="RWF-2000", help="Root input video directory")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="RWF-2000_skeletons",
+        help="Dedicated tidy output directory for skeleton videos",
+    )
     parser.add_argument("--gamma", type=float, default=0.67, help="Gamma factor (default: 0.67)")
-    parser.add_argument("--size", type=int, default=112, help="Spatial dimension (H=W)")
+    parser.add_argument("--size", type=int, default=112, help="Spatial resolution (H=W)")
+    parser.add_argument("--num_poses", type=int, default=4, help="Max poses per frame")
     args = parser.parse_args()
 
-    preprocess_dataset(dataset_dir=args.dataset_dir, gamma=args.gamma, image_size=args.size)
+    preprocess_dataset(
+        dataset_dir=args.dataset_dir,
+        output_dir=args.output_dir,
+        gamma=args.gamma,
+        image_size=args.size,
+        num_poses=args.num_poses,
+    )

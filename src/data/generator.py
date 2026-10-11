@@ -17,6 +17,7 @@ class RWF2000Sequence(keras.utils.Sequence):
     def __init__(
         self,
         split_dir: str,
+        skeletons_dir: Optional[str] = None,
         sequence_length: int = 16,
         target_size: Tuple[int, int] = (112, 112),
         batch_size: int = 8,
@@ -29,6 +30,7 @@ class RWF2000Sequence(keras.utils.Sequence):
 
         Args:
             split_dir: Directory pointing to train or val split (e.g. 'RWF-2000/train').
+            skeletons_dir: Optional separate mirrored directory for skeleton videos (e.g. 'RWF-2000_skeletons/train').
             sequence_length: Number of difference frames T.
             target_size: (H, W).
             batch_size: Batch size.
@@ -40,6 +42,7 @@ class RWF2000Sequence(keras.utils.Sequence):
         """
         super().__init__()
         self.split_dir = split_dir
+        self.skeletons_dir = skeletons_dir
         self.sequence_length = sequence_length
         self.target_size = target_size
         self.batch_size = batch_size
@@ -66,7 +69,7 @@ class RWF2000Sequence(keras.utils.Sequence):
                 video_paths.extend(glob.glob(os.path.join(class_folder, ext)))
                 video_paths.extend(glob.glob(os.path.join(class_folder, ext.upper())))
 
-            # Exclude preprocessed skeleton videos from sample list
+            # Exclude preprocessed skeleton videos from sample list if stored locally
             video_paths = [
                 p for p in video_paths
                 if not p.endswith("_skeletons.avi") and not p.endswith("_skeletons.mp4")
@@ -80,20 +83,34 @@ class RWF2000Sequence(keras.utils.Sequence):
     def __len__(self) -> int:
         return int(np.ceil(len(self.samples) / float(self.batch_size)))
 
+    def _find_skeleton_path(self, video_path: str) -> Optional[str]:
+        """Finds the corresponding skeleton video in tidy mirrored folder or legacy local file."""
+        # 1. Check tidy separate skeletons directory (e.g. RWF-2000_skeletons/train/Fight/video.avi)
+        if self.skeletons_dir:
+            rel_path = os.path.relpath(video_path, self.split_dir)
+            mirrored_path = os.path.join(self.skeletons_dir, rel_path)
+            if os.path.exists(mirrored_path):
+                return mirrored_path
+
+        # 2. Check legacy in-place file (e.g. video_skeletons.avi)
+        base, ext = os.path.splitext(video_path)
+        legacy_path = f"{base}_skeletons{ext}"
+        if os.path.exists(legacy_path):
+            return legacy_path
+
+        return None
+
     def _load_sample(self, video_path: str) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """Loads raw frames and paired skeleton frames."""
-        # Raw frames (sample sequence_length + 1 frames)
         raw_frames = load_video_frames(video_path, target_size=self.target_size)
         raw_sampled = sample_frames_uniformly(raw_frames, num_samples=self.sequence_length + 1)
         raw_tensor = (raw_sampled.astype(np.float32) / 255.0)
 
         skeleton_tensor = None
         if self.two_stream:
-            # Check for paired skeleton video
-            base, ext = os.path.splitext(video_path)
-            skeleton_path = f"{base}_skeletons{ext}"
-            if os.path.exists(skeleton_path):
-                skel_frames = load_video_frames(skeleton_path, target_size=self.target_size)
+            skel_path = self._find_skeleton_path(video_path)
+            if skel_path and os.path.exists(skel_path):
+                skel_frames = load_video_frames(skel_path, target_size=self.target_size)
                 skel_sampled = sample_frames_uniformly(skel_frames, num_samples=self.sequence_length + 1)
                 skeleton_tensor = (skel_sampled.astype(np.float32) / 255.0)
             else:

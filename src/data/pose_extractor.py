@@ -1,5 +1,6 @@
-"""Pose estimation and skeleton rendering on black backgrounds."""
+"""Pose estimation and multi-person skeleton rendering on black backgrounds using modern MediaPipe Tasks API."""
 
+import os
 from typing import List, Optional, Tuple
 import cv2
 import numpy as np
@@ -7,7 +8,7 @@ import numpy as np
 from src.data.gamma import apply_gamma_correction
 
 # Distinct color scheme for body parts (BGR format for OpenCV)
-# Distinguishing limbs and joints as detailed in Garcia & SanMiguel (CVIU 2023) Fig. 2
+# Color distinction preserves anatomical structural features as emphasized in Garcia & SanMiguel (CVIU 2023) Fig. 2
 PART_COLORS = {
     "head": (255, 0, 255),       # Magenta
     "torso": (0, 255, 0),        # Green
@@ -17,95 +18,148 @@ PART_COLORS = {
     "right_leg": (255, 0, 100),  # Purple-Pink
 }
 
+# Anatomical connection definitions between MediaPipe 33 keypoints
+CONNECTIONS = [
+    # Torso
+    (11, 12, PART_COLORS["torso"]),
+    (11, 23, PART_COLORS["torso"]),
+    (12, 24, PART_COLORS["torso"]),
+    (23, 24, PART_COLORS["torso"]),
+    # Head / Neck
+    (0, 1, PART_COLORS["head"]),
+    (1, 2, PART_COLORS["head"]),
+    (2, 3, PART_COLORS["head"]),
+    (0, 4, PART_COLORS["head"]),
+    (4, 5, PART_COLORS["head"]),
+    (5, 6, PART_COLORS["head"]),
+    # Left arm
+    (11, 13, PART_COLORS["left_arm"]),
+    (13, 15, PART_COLORS["left_arm"]),
+    # Right arm
+    (12, 14, PART_COLORS["right_arm"]),
+    (14, 16, PART_COLORS["right_arm"]),
+    # Left leg
+    (23, 25, PART_COLORS["left_leg"]),
+    (25, 27, PART_COLORS["left_leg"]),
+    # Right leg
+    (24, 26, PART_COLORS["right_leg"]),
+    (26, 28, PART_COLORS["right_leg"]),
+]
+
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+
+
+def ensure_pose_model(model_path: str = "models/pose_landmarker_lite.task") -> str:
+    """Ensures MediaPipe Pose Landmarker task file is present on disk, downloading if necessary."""
+    if not os.path.exists(model_path):
+        os.makedirs(os.path.dirname(os.path.abspath(model_path)), exist_ok=True)
+        print(f"[Pose] Downloading MediaPipe PoseLandmarker model from {MODEL_URL}...")
+        import urllib.request
+        urllib.request.urlretrieve(MODEL_URL, model_path)
+    return model_path
+
 
 class SkeletonRenderer:
-    """Renders human skeletons with colored limbs on a solid black background."""
+    """Extracts multi-person poses and renders anatomical colored skeletons on a solid black canvas."""
 
-    def __init__(self, backend: str = "mediapipe", line_thickness: int = 2, joint_radius: int = 3):
-        self.backend = backend
+    def __init__(
+        self,
+        model_path: str = "models/pose_landmarker_lite.task",
+        num_poses: int = 4,
+        min_pose_detection_confidence: float = 0.5,
+        min_pose_presence_confidence: float = 0.5,
+        line_thickness: int = 2,
+        joint_radius: int = 3,
+    ):
+        """Initializes the multi-person skeleton renderer.
+
+        Args:
+            model_path: Path to pose_landmarker_*.task model file.
+            num_poses: Maximum number of people to detect in the frame (surveillance scenes contain multiple people).
+            min_pose_detection_confidence: Minimum detection confidence score.
+            min_pose_presence_confidence: Minimum landmark presence score.
+            line_thickness: Thickness of skeleton bone lines.
+            joint_radius: Radius of joint keypoint dots.
+        """
+        self.num_poses = num_poses
         self.line_thickness = line_thickness
         self.joint_radius = joint_radius
-        self._mp_pose = None
-        self._pose_detector = None
+        self.landmarker = None
 
-        if self.backend == "mediapipe":
-            try:
-                import mediapipe as mp
-                self._mp_pose = mp.solutions.pose
-                self._pose_detector = self._mp_pose.Pose(
-                    static_image_mode=False,
-                    model_complexity=1,
-                    enable_segmentation=False,
-                    min_detection_confidence=0.5,
-                    min_tracking_confidence=0.5,
-                )
-            except Exception as e:
-                print(f"[Warning] Failed to initialize MediaPipe: {e}. Falling back to geometric mock.")
-                self.backend = "fallback"
+        try:
+            import mediapipe as mp
+            from mediapipe.tasks.python import vision
+
+            resolved_model = ensure_pose_model(model_path)
+            base_options = mp.tasks.BaseOptions(model_asset_path=resolved_model)
+            options = vision.PoseLandmarkerOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.IMAGE,
+                num_poses=self.num_poses,
+                min_pose_detection_confidence=min_pose_detection_confidence,
+                min_pose_presence_confidence=min_pose_presence_confidence,
+            )
+            self.landmarker = vision.PoseLandmarker.create_from_options(options)
+            self._mp = mp
+        except Exception as e:
+            print(f"[Warning] Failed to initialize MediaPipe PoseLandmarker: {e}. Falling back to blank canvas.")
 
     def render_on_black(self, frame_bgr: np.ndarray) -> np.ndarray:
-        """Extracts pose from frame and renders colored skeleton on a black canvas."""
+        """Extracts all human poses and renders their colored skeletons over a black canvas.
+
+        Args:
+            frame_bgr: Single input frame in BGR format, uint8.
+
+        Returns:
+            black_canvas: Image of same shape (H, W, 3) containing only rendered skeletons.
+        """
         h, w, c = frame_bgr.shape
-        # Create solid black canvas
+        # Canvas strictly filled with zeros (solid black background)
         black_canvas = np.zeros((h, w, c), dtype=np.uint8)
 
-        if self.backend == "mediapipe" and self._pose_detector is not None:
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-            results = self._pose_detector.process(frame_rgb)
+        if self.landmarker is None:
+            return black_canvas
 
-            if results.pose_landmarks:
-                landmarks = results.pose_landmarks.landmark
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=frame_rgb)
 
-                def get_pt(idx):
-                    lm = landmarks[idx]
-                    return (int(lm.x * w), int(lm.y * h)), lm.visibility
+        try:
+            results = self.landmarker.detect(mp_image)
+        except Exception:
+            return black_canvas
 
-                # Define bone connections with anatomical groups
-                connections = [
-                    # Torso
-                    (11, 12, PART_COLORS["torso"]),
-                    (11, 23, PART_COLORS["torso"]),
-                    (12, 24, PART_COLORS["torso"]),
-                    (23, 24, PART_COLORS["torso"]),
-                    # Head / Neck
-                    (0, 1, PART_COLORS["head"]),
-                    (1, 2, PART_COLORS["head"]),
-                    (2, 3, PART_COLORS["head"]),
-                    (0, 4, PART_COLORS["head"]),
-                    (4, 5, PART_COLORS["head"]),
-                    (5, 6, PART_COLORS["head"]),
-                    # Left arm
-                    (11, 13, PART_COLORS["left_arm"]),
-                    (13, 15, PART_COLORS["left_arm"]),
-                    # Right arm
-                    (12, 14, PART_COLORS["right_arm"]),
-                    (14, 16, PART_COLORS["right_arm"]),
-                    # Left leg
-                    (23, 25, PART_COLORS["left_leg"]),
-                    (25, 27, PART_COLORS["left_leg"]),
-                    # Right leg
-                    (24, 26, PART_COLORS["right_leg"]),
-                    (26, 28, PART_COLORS["right_leg"]),
-                ]
+        if not results.pose_landmarks:
+            return black_canvas
 
-                # Draw bones
-                for idx1, idx2, color in connections:
-                    pt1, v1 = get_pt(idx1)
-                    pt2, v2 = get_pt(idx2)
-                    if v1 > 0.4 and v2 > 0.4:
-                        cv2.line(black_canvas, pt1, pt2, color, self.line_thickness)
+        # Process each detected person in the multi-person frame
+        for person_landmarks in results.pose_landmarks:
+            def get_pt(idx: int):
+                lm = person_landmarks[idx]
+                visibility = getattr(lm, "visibility", 1.0) or 1.0
+                presence = getattr(lm, "presence", 1.0) or 1.0
+                return (int(lm.x * w), int(lm.y * h)), min(visibility, presence)
 
-                # Draw joint points
-                for i in range(len(landmarks)):
-                    pt, v = get_pt(i)
-                    if v > 0.4:
-                        cv2.circle(black_canvas, pt, self.joint_radius, (255, 255, 255), -1)
+            # Draw bones for this person
+            for idx1, idx2, color in CONNECTIONS:
+                pt1, score1 = get_pt(idx1)
+                pt2, score2 = get_pt(idx2)
+                if score1 > 0.4 and score2 > 0.4:
+                    cv2.line(black_canvas, pt1, pt2, color, self.line_thickness)
+
+            # Draw joint dots
+            for idx in range(len(person_landmarks)):
+                pt, score = get_pt(idx)
+                if score > 0.4:
+                    cv2.circle(black_canvas, pt, self.joint_radius, (255, 255, 255), -1)
 
         return black_canvas
 
     def close(self):
-        if self._pose_detector is not None:
-            self._pose_detector.close()
+        if self.landmarker is not None:
+            try:
+                self.landmarker.close()
+            except Exception:
+                pass
 
 
 def process_video_skeletons(
@@ -113,16 +167,18 @@ def process_video_skeletons(
     output_path: Optional[str] = None,
     gamma: float = 0.67,
     target_size: Optional[Tuple[int, int]] = None,
+    renderer: Optional[SkeletonRenderer] = None,
 ) -> np.ndarray:
-    """Reads a video, applies gamma correction (0.67), extracts skeletons on black background,
+    """Reads a video, applies gamma correction (0.67), extracts multi-person skeletons
 
-    and optionally saves the result as an AVI video.
+    on a black background, and writes the resulting skeleton video to output_path.
 
     Args:
-        video_path: Input video path.
-        output_path: Optional path to save rendered skeleton video.
+        video_path: Input raw video file path.
+        output_path: Path to write the output skeleton video.
         gamma: Gamma correction factor (default: 0.67).
-        target_size: (H, W) tuple to resize.
+        target_size: (H, W) tuple to resize frames.
+        renderer: Optional reusable SkeletonRenderer instance.
 
     Returns:
         Array of rendered skeleton frames (T, H, W, 3) in RGB format, uint8.
@@ -138,12 +194,15 @@ def process_video_skeletons(
 
     writer = None
     if output_path:
-        import os
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         fourcc = cv2.VideoWriter_fourcc(*"XVID")
         writer = cv2.VideoWriter(output_path, fourcc, fps, (out_w, out_h))
 
-    renderer = SkeletonRenderer()
+    own_renderer = False
+    if renderer is None:
+        renderer = SkeletonRenderer()
+        own_renderer = True
+
     skeleton_frames: List[np.ndarray] = []
 
     try:
@@ -152,26 +211,26 @@ def process_video_skeletons(
             if not ret:
                 break
 
-            # 1. Resize if needed
-            if target_size and (orig_h, orig_w) != target_size:
-                frame = cv2.resize(frame, (out_w, out_h))
+            # 1. Resize if required
+            if target_size and (frame.shape[0], frame.shape[1]) != (out_h, out_w):
+                frame = cv2.resize(frame, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
 
-            # 2. Apply gamma correction (γ = 0.67) to enhance contrast
+            # 2. Gamma correction (contrast enhancement for surveillance scenes)
             enhanced = apply_gamma_correction(frame, gamma=gamma)
 
-            # 3. Extract pose & render on black background
-            skeleton_bgr = renderer.render_on_black(enhanced)
+            # 3. Multi-person pose estimation on black background
+            skel_bgr = renderer.render_on_black(enhanced)
 
             if writer:
-                writer.write(skeleton_bgr)
+                writer.write(skel_bgr)
 
-            # Store in RGB
-            skeleton_rgb = cv2.cvtColor(skeleton_bgr, cv2.COLOR_BGR2RGB)
-            skeleton_frames.append(skeleton_rgb)
+            skel_rgb = cv2.cvtColor(skel_bgr, cv2.COLOR_BGR2RGB)
+            skeleton_frames.append(skel_rgb)
     finally:
         cap.release()
         if writer:
             writer.release()
-        renderer.close()
+        if own_renderer:
+            renderer.close()
 
     return np.array(skeleton_frames, dtype=np.uint8)

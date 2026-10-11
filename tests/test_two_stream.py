@@ -1,10 +1,14 @@
 """Unit tests for Two-Stream converging architecture, gamma correction, and skeleton rendering."""
 
+import os
+import tempfile
+import cv2
 import numpy as np
 import pytest
 import tensorflow as tf
 
 from src.data.gamma import apply_gamma_correction, get_gamma_table
+from src.data.generator import RWF2000Sequence
 from src.data.pose_extractor import SkeletonRenderer
 from src.models.two_stream import build_two_stream_model
 
@@ -33,7 +37,7 @@ def test_skeleton_renderer_black_background():
 
     assert rendered.shape == (64, 64, 3)
     assert rendered.dtype == np.uint8
-    # Majority of background pixels should be black (0)
+    # Canvas background must be solid black (0)
     assert np.mean(rendered == 0) > 0.8
     renderer.close()
 
@@ -86,3 +90,38 @@ def test_dummy_forward_pass_no_training():
     assert predictions.shape == (batch_size, 1)
     preds_np = predictions.numpy()
     assert np.all(preds_np >= 0.0) and np.all(preds_np <= 1.0)
+
+
+def test_tidy_skeleton_directory_lookup():
+    # Test path resolution for separate, mirrored skeleton directory
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        raw_train = os.path.join(tmp_dir, "RWF-2000", "train")
+        skel_train = os.path.join(tmp_dir, "RWF-2000_skeletons", "train")
+        os.makedirs(os.path.join(raw_train, "Fight"), exist_ok=True)
+        os.makedirs(os.path.join(skel_train, "Fight"), exist_ok=True)
+
+        raw_vid = os.path.join(raw_train, "Fight", "vid_01.avi")
+        skel_vid = os.path.join(skel_train, "Fight", "vid_01.avi")
+
+        # Create dummy video files
+        fourcc = cv2.VideoWriter_fourcc(*"XVID")
+        w_raw = cv2.VideoWriter(raw_vid, fourcc, 10, (32, 32))
+        w_skel = cv2.VideoWriter(skel_vid, fourcc, 10, (32, 32))
+        for _ in range(5):
+            w_raw.write(np.zeros((32, 32, 3), dtype=np.uint8))
+            w_skel.write(np.full((32, 32, 3), 255, dtype=np.uint8))
+        w_raw.release()
+        w_skel.release()
+
+        seq = RWF2000Sequence(
+            split_dir=raw_train,
+            skeletons_dir=skel_train,
+            sequence_length=3,
+            target_size=(32, 32),
+            batch_size=1,
+            two_stream=True,
+        )
+
+        found_path = seq._find_skeleton_path(raw_vid)
+        assert found_path == skel_vid
+        assert os.path.exists(found_path)
