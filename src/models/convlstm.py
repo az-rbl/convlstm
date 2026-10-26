@@ -68,19 +68,20 @@ def build_convlstm_model(
     if use_batch_norm:
         x = layers.BatchNormalization(name="bn_convlstm")(x)
 
-    # 2. Global Average Pooling (Height, Width) -> 1D vector (9,)
-    x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
-
     # ==========================================
     # Post-processing: Depthwise Convolution
     # ==========================================
-    x = layers.DepthwiseConv2D(
-        kernel_size=(3, 3),
-        depth_multiplier=depth_multiplier,
-        padding="same",
-        activation="relu",
-        name="depthwise_conv_post",
-    )(x)
+    if depth_multiplier and depth_multiplier > 0:
+        x = layers.DepthwiseConv2D(
+            kernel_size=(3, 3),
+            depth_multiplier=depth_multiplier,
+            padding="same",
+            activation="relu",
+            name="depthwise_conv_post",
+        )(x)
+
+    # 2. Global Average Pooling (Height, Width) -> 1D vector
+    x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
     # 3. Fully connected layers: 128 -> 16 -> 1
     # Dense 128
     x = layers.Dense(dense_units[0], activation="relu", name="dense_128")(x)
@@ -117,8 +118,9 @@ def build_model_from_config(config: AppConfig) -> keras.Model:
 
     return build_convlstm_model(
         input_shape=input_shape,
-        filters=model_cfg.filters,
-        kernel_size=model_cfg.kernel_size,
+        filters=getattr(model_cfg, "filters", getattr(model_cfg, "convlstm_diff_filters", 9)),
+        depth_multiplier=getattr(model_cfg, "depth_multiplier", 2),
+        kernel_size=getattr(model_cfg, "kernel_size", (3, 3)),
         dense_units=model_cfg.dense_units,
         dropout_rate=model_cfg.dropout_rate,
         recurrent_dropout=model_cfg.recurrent_dropout,
