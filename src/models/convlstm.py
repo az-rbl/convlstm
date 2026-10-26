@@ -11,6 +11,7 @@ from src.config import AppConfig
 def build_convlstm_model(
     input_shape: Tuple[Optional[int], int, int, int] = (16, 112, 112, 3),
     filters: int = 9,
+    depth_multiplier: int = 2,
     kernel_size: Union[Tuple[int, int], List[int]] = (3, 3),
     dense_units: Optional[List[int]] = None,
     dropout_rate: float = 0.3,
@@ -70,6 +71,16 @@ def build_convlstm_model(
     # 2. Global Average Pooling (Height, Width) -> 1D vector (9,)
     x = layers.GlobalAveragePooling2D(name="global_avg_pool")(x)
 
+    # ==========================================
+    # Post-processing: Depthwise Convolution
+    # ==========================================
+    x = layers.DepthwiseConv2D(
+        kernel_size=(3, 3),
+        depth_multiplier=depth_multiplier,
+        padding="same",
+        activation="relu",
+        name="depthwise_conv_post",
+    )(x)
     # 3. Fully connected layers: 128 -> 16 -> 1
     # Dense 128
     x = layers.Dense(dense_units[0], activation="relu", name="dense_128")(x)

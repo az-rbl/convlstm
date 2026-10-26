@@ -28,6 +28,8 @@ class DataConfig:
 class ModelConfig:
     name: str = "TwoStream_Converging_Classifier"
     type: str = "two_stream"
+    filters: int = 9
+    kernel_size: List[int] = field(default_factory=lambda: [3, 3])
     gamma: float = 0.67
     conv_filters: int = 9
     convlstm_diff_filters: int = 9
