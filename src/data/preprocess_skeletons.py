@@ -15,8 +15,8 @@ from src.data.pose_extractor import SkeletonRenderer, process_video_skeletons
 
 
 def preprocess_dataset(
-    dataset_dir: str = "RWF-2000",
-    output_dir: str = "RWF-2000_skeletons",
+    dataset_dir: str = "data/raw/RWF-2000",
+    output_dir: str = "data/processed/RWF-2000",
     gamma: float = 0.67,
     image_size: int = 112,
     num_poses: int = 4,
@@ -92,11 +92,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Mirror raw dataset into clean, dedicated skeleton video directory."
     )
-    parser.add_argument("--dataset_dir", type=str, default="RWF-2000", help="Root input video directory")
+    parser.add_argument("--dataset_dir", type=str, default="data/raw/RWF-2000", help="Root input video directory")
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="RWF-2000_skeletons",
+        default="data/processed/RWF-2000",
         help="Dedicated tidy output directory for skeleton videos",
     )
     parser.add_argument("--gamma", type=float, default=0.67, help="Gamma factor (default: 0.67)")

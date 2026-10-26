@@ -6,7 +6,7 @@ import tarfile
 from huggingface_hub import snapshot_download
 
 
-def download_rwf2000(dest_dir: str = "RWF-2000") -> str:
+def download_rwf2000(dest_dir: str = "data/raw/RWF-2000") -> str:
     """Downloads RWF-2000 from Hugging Face (DanJoshua/RWF-2000) into dest_dir.
 
     Args:
@@ -60,6 +60,6 @@ def download_rwf2000(dest_dir: str = "RWF-2000") -> str:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download RWF-2000 dataset from Hugging Face.")
-    parser.add_argument("--dest", type=str, default="RWF-2000", help="Destination directory")
+    parser.add_argument("--dest", type=str, default="data/raw/RWF-2000", help="Destination directory")
     args = parser.parse_args()
     download_rwf2000(args.dest)

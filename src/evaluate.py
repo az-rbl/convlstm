@@ -38,11 +38,15 @@ def evaluate():
     if not os.path.exists(val_dir):
         raise FileNotFoundError(f"Validation directory not found at: {val_dir}")
 
+    skeletons_path = getattr(config.data, "skeletons_path", None)
+    skeletons_val_dir = os.path.join(skeletons_path, config.data.val_split) if skeletons_path else None
+
     print(f"Loading model from: {args.model_path}")
     model = keras.models.load_model(args.model_path)
 
     val_seq = RWF2000Sequence(
         split_dir=val_dir,
+        skeletons_dir=skeletons_val_dir,
         sequence_length=config.data.sequence_length,
         target_size=(config.data.image_size[0], config.data.image_size[1]),
         batch_size=config.data.batch_size,

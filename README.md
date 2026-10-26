@@ -103,13 +103,13 @@ cp .env.example .env
 
 ### 3. Download the Dataset
 ```bash
-python -m src.data.download_dataset --dest RWF-2000
+python -m src.data.download_dataset --dest data/raw/RWF-2000
 ```
 
 ### 4. Preprocess Skeletons on Black Backgrounds
 Run the preprocessing utility to apply gamma correction ($\gamma = 0.67$) and render skeleton videos on black backgrounds:
 ```bash
-python -m src.data.preprocess_skeletons --dataset_dir RWF-2000 --gamma 0.67 --size 112
+python -m src.data.preprocess_skeletons --dataset_dir data/raw/RWF-2000 --output_dir data/processed/RWF-2000 --gamma 0.67 --size 112
 ```
 This produces matching `*_skeletons.avi` files alongside the original videos.
 

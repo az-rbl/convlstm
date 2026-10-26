@@ -42,3 +42,5 @@ mlruns/
 .idea/
 .DS_Store
 Thumbs.db
+
+documents/

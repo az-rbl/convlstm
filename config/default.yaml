@@ -1,7 +1,7 @@
 # Default configuration for ConvLSTM Video Classification with Change Detection
 data:
-  dataset_path: "RWF-2000"
-  skeletons_path: "RWF-2000_skeletons"  # Tidy separate directory for rendered skeletons
+  dataset_path: "data/raw/RWF-2000"
+  skeletons_path: "data/processed/RWF-2000"  # Tidy separate directory for rendered skeletons
   train_split: "train"
   val_split: "val"
   sequence_length: 16       # Number of consecutive difference frames T

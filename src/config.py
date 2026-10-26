@@ -8,8 +8,8 @@ import yaml
 
 @dataclass
 class DataConfig:
-    dataset_path: str = "RWF-2000"
-    skeletons_path: str = "RWF-2000_skeletons"
+    dataset_path: str = "data/raw/RWF-2000"
+    skeletons_path: str = "data/processed/RWF-2000"
     train_split: str = "train"
     val_split: str = "val"
     sequence_length: int = 16

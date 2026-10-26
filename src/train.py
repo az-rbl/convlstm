@@ -88,35 +88,19 @@ def train():
         experiment_name=config.mlflow.experiment_name
     )
 
-    # 2. Prepare Datasets (Auto-detect nested RWF-2000 structure if present)
-    dataset_path = config.data.dataset_path
-    if not os.path.exists(os.path.join(dataset_path, config.data.train_split)):
-        nested_candidate = os.path.join(dataset_path, "RWF-2000")
-        if os.path.exists(os.path.join(nested_candidate, config.data.train_split)):
-            dataset_path = nested_candidate
-            config.data.dataset_path = dataset_path
-
-    train_dir = os.path.join(dataset_path, config.data.train_split)
-    val_dir = os.path.join(dataset_path, config.data.val_split)
+    # 2. Prepare Datasets
+    train_dir = os.path.join(config.data.dataset_path, config.data.train_split)
+    val_dir = os.path.join(config.data.dataset_path, config.data.val_split)
 
     if not os.path.exists(train_dir) or not os.path.exists(val_dir):
         raise FileNotFoundError(
             f"Train/Val directories not found! Expected:\n  {train_dir}\n  {val_dir}\n"
-            f"Run: python -m src.data.download_dataset to download RWF-2000."
         )
 
     print(f"\n[Data] Initializing train and validation sequences (two_stream={is_two_stream})...")
     skeletons_path = getattr(config.data, "skeletons_path", None)
-    skeletons_train_dir = None
-    skeletons_val_dir = None
-    if skeletons_path:
-        if not os.path.exists(os.path.join(skeletons_path, config.data.train_split)):
-            nested_skel = os.path.join(skeletons_path, "RWF-2000")
-            if os.path.exists(os.path.join(nested_skel, config.data.train_split)):
-                skeletons_path = nested_skel
-                config.data.skeletons_path = skeletons_path
-        skeletons_train_dir = os.path.join(skeletons_path, config.data.train_split)
-        skeletons_val_dir = os.path.join(skeletons_path, config.data.val_split)
+    skeletons_train_dir = os.path.join(skeletons_path, config.data.train_split) if skeletons_path else None
+    skeletons_val_dir = os.path.join(skeletons_path, config.data.val_split) if skeletons_path else None
 
     train_seq = RWF2000Sequence(
         split_dir=train_dir,
