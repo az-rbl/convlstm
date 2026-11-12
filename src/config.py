@@ -43,6 +43,7 @@ class ModelConfig:
 
 @dataclass
 class EarlyStoppingConfig:
+    enabled: bool = True
     patience: int = 7
     monitor: str = "val_loss"
     mode: str = "min"

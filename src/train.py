@@ -51,6 +51,11 @@ def parse_args():
         default=None,
         help="Override MLflow experiment name",
     )
+    parser.add_argument(
+        "--no_early_stopping",
+        action="store_true",
+        help="Disable early stopping for this run",
+    )
     return parser.parse_args()
 
 
@@ -67,6 +72,8 @@ def train():
         config.training.learning_rate = args.lr
     if args.experiment_name:
         config.mlflow.experiment_name = args.experiment_name
+    if args.no_early_stopping:
+        config.training.early_stopping.enabled = False
 
     print("==================================================")
     print("  ConvLSTM Video Classifier Training Pipeline")
@@ -81,7 +88,9 @@ def train():
     else:
         print(f"ConvLSTM Filters: {getattr(config.model, 'filters', 9)}")
     print(f"Dense sequence: {config.model.dense_units}")
-    print(f"Batch size: {config.data.batch_size} | Epochs: {config.training.epochs}")
+    es_enabled = getattr(config.training.early_stopping, "enabled", True)
+    es_info = f"Enabled (Patience={config.training.early_stopping.patience})" if es_enabled else "Disabled"
+    print(f"Batch size: {config.data.batch_size} | Epochs: {config.training.epochs} | Early Stopping: {es_info}")
 
     # 1. Setup MLflow & DagsHub
     tracking_uri = setup_mlflow_and_dagshub(
@@ -161,21 +170,28 @@ def train():
             save_best_only=config.training.checkpoint.save_best_only,
             verbose=1,
         ),
-        callbacks.EarlyStopping(
-            monitor=config.training.early_stopping.monitor,
-            patience=config.training.early_stopping.patience,
-            mode=config.training.early_stopping.mode,
-            restore_best_weights=True,
-            verbose=1,
-        ),
+    ]
+
+    if getattr(config.training.early_stopping, "enabled", True):
+        training_callbacks.append(
+            callbacks.EarlyStopping(
+                monitor=config.training.early_stopping.monitor,
+                patience=config.training.early_stopping.patience,
+                mode=config.training.early_stopping.mode,
+                restore_best_weights=True,
+                verbose=1,
+            )
+        )
+
+    training_callbacks.append(
         callbacks.ReduceLROnPlateau(
             monitor=config.training.early_stopping.monitor,
             factor=config.training.reduce_lr_on_plateau.factor,
             patience=config.training.reduce_lr_on_plateau.patience,
             min_lr=config.training.reduce_lr_on_plateau.min_lr,
             verbose=1,
-        ),
-    ]
+        )
+    )
 
     # 6. Execute Training within MLflow Run
     with mlflow.start_run(run_name=config.mlflow.run_name):

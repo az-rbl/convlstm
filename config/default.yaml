@@ -16,8 +16,9 @@ data:
     Fight: 1
 
 model:
-  name: "TwoStream_Converging_Classifier"
-  type: "two_stream"               # "two_stream" or "single_stream"
+  name: "ConvLSTM_ChangeDetection"
+  type: "single_stream"                # "two_stream" or "single_stream"
+  filters: 16 
   gamma: 0.67                      # Gamma correction factor for pose stream
   conv_filters: 9                  # 9-filter Conv2D layer on skeletons
   convlstm_diff_filters: 9         # 9-filter ConvLSTM layer on frame differences
@@ -29,12 +30,13 @@ model:
   use_batch_norm: true
 
 training:
-  epochs: 30
+  epochs: 50
   learning_rate: 0.0001
   optimizer: "adam"
   loss: "binary_crossentropy"
   metrics: ["accuracy", "AUC", "Precision", "Recall"]
   early_stopping:
+    enabled: false
     patience: 7
     monitor: "val_loss"
     mode: "min"
