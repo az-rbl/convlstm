@@ -18,25 +18,27 @@ from src.config import AppConfig
 
 
 def build_two_stream_model(
-    input_shape: Tuple[Optional[int], int, int, int] = (17, 112, 112, 3),
+    input_shape: Tuple[Optional[int], int, int, int] = (51, 100, 100, 3),
     conv_filters: int = 9,
     convlstm_diff_filters: int = 9,
     aggregator_filters: int = 32,
     depth_multiplier: int = 2,
+    padding: str = "valid",
     dense_units: Optional[List[int]] = None,
-    dropout_rate: float = 0.3,
+    dropout_rate: float = 0.0,
     name: str = "TwoStream_ConvLSTM_Classifier",
 ) -> keras.Model:
-    """Builds the complete Two-Stream converging video classifier.
+    """Builds the complete Two-Stream converging video classifier (Garcia-Cobo & SanMiguel, CVIU 2023).
 
     Args:
-        input_shape: (frames_per_video, height, width, channels) where frames_per_video = T + 1.
+        input_shape: (frames_per_video, height, width, channels) where frames_per_video = T + 1 (e.g. 51).
         conv_filters: Number of filters in the pose Conv2D layer (default: 9).
         convlstm_diff_filters: Number of filters in the difference ConvLSTM2D (default: 9).
         aggregator_filters: Number of filters in temporal aggregator ConvLSTM2D (default: 32).
         depth_multiplier: Multiplier for DepthwiseConv2D post-processing (default: 2 -> 64 filters).
+        padding: Padding mode for convolution and ConvLSTM layers (default: 'valid' matching CVIU 2023).
         dense_units: Fully connected classification units (default: [128, 16, 1]).
-        dropout_rate: Dropout rate for dense layers.
+        dropout_rate: Dropout rate for dense layers (default: 0.0 matching CVIU 2023).
         name: Model name.
 
     Returns:
@@ -63,7 +65,7 @@ def build_two_stream_model(
     inputs_diff_time_info_weight = layers.ConvLSTM2D(
         filters=convlstm_diff_filters,
         kernel_size=(3, 3),
-        padding="same",
+        padding=padding,
         return_sequences=True,
         activation="tanh",
         name="convlstm_diff_stream",
@@ -82,7 +84,7 @@ def build_two_stream_model(
     conv_pose_layer = layers.Conv2D(
         filters=conv_filters,
         kernel_size=(3, 3),
-        padding="same",
+        padding=padding,
         activation="relu",
         name="conv2d_pose_layer",
     )
@@ -112,7 +114,7 @@ def build_two_stream_model(
     x = layers.ConvLSTM2D(
         filters=aggregator_filters,
         kernel_size=(3, 3),
-        padding="same",
+        padding=padding,
         return_sequences=False,
         activation="tanh",
         name="convlstm_aggregator",
@@ -124,7 +126,7 @@ def build_two_stream_model(
     x = layers.DepthwiseConv2D(
         kernel_size=(3, 3),
         depth_multiplier=depth_multiplier,
-        padding="same",
+        padding=padding,
         activation="relu",
         name="depthwise_conv_post",
     )(x)
@@ -170,6 +172,7 @@ def build_two_stream_from_config(config: AppConfig) -> keras.Model:
         convlstm_diff_filters=getattr(model_cfg, "convlstm_diff_filters", 9),
         aggregator_filters=getattr(model_cfg, "aggregator_filters", 32),
         depth_multiplier=getattr(model_cfg, "depth_multiplier", 2),
+        padding=getattr(model_cfg, "padding", "valid"),
         dense_units=model_cfg.dense_units,
         dropout_rate=model_cfg.dropout_rate,
         name=model_cfg.name,

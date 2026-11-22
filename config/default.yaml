@@ -1,14 +1,16 @@
-# Default configuration for ConvLSTM Video Classification with Change Detection
+# Default configuration for Two-Stream ConvLSTM Video Classification with Change Detection
+# Aligned with Garcia-Cobo & SanMiguel (CVIU 2023)
 data:
   dataset_path: "data/raw/RWF-2000"
-  skeletons_path: "data/processed/RWF-2000"  # Tidy separate directory for rendered skeletons
+  skeletons_path: "data/processed/RWF-2000"  # Dedicated directory for rendered skeletons
   train_split: "train"
   val_split: "val"
-  sequence_length: 16       # Number of consecutive difference frames T
-  frame_stride: 2           # Stride when sampling frames
-  image_size: [112, 112]    # [height, width]
+  sequence_length: 50       # Number of consecutive difference frames T (51 frames loaded)
+  frame_stride: 1           # Uniform sampling
+  image_size: [100, 100]    # [height, width] matching CVIU 2023
   channels: 3               # 3-channel RGB frame differences
-  batch_size: 8
+  batch_size: 10
+  normalize: false
   shuffle: true
   num_workers: 4
   classes:
@@ -16,22 +18,23 @@ data:
     Fight: 1
 
 model:
-  name: "ConvLSTM_ChangeDetection"
-  type: "single_stream"                # "two_stream" or "single_stream"
-  filters: 16 
+  name: "TwoStream_ConvLSTM_Classifier"
+  type: "two_stream"                # "two_stream" or "single_stream"
+  filters: 9
   gamma: 0.67                      # Gamma correction factor for pose stream
   conv_filters: 9                  # 9-filter Conv2D layer on skeletons
   convlstm_diff_filters: 9         # 9-filter ConvLSTM layer on frame differences
   aggregator_filters: 32           # 32-filter temporal aggregator ConvLSTM
   depth_multiplier: 2              # Depthwise conv post-processing (32*2 = 64)
+  padding: "valid"                 # Keras default valid padding
   dense_units: [128, 16, 1]        # FC layer sequence: 128 -> 16 -> 1
-  dropout_rate: 0.3
-  recurrent_dropout: 0.1
+  dropout_rate: 0.0                # 0.0 in original model
+  recurrent_dropout: 0.0
   use_batch_norm: true
 
 training:
   epochs: 50
-  learning_rate: 0.0001
+  learning_rate: 0.001
   optimizer: "adam"
   loss: "binary_crossentropy"
   metrics: ["accuracy", "AUC", "Precision", "Recall"]
@@ -41,6 +44,7 @@ training:
     monitor: "val_loss"
     mode: "min"
   reduce_lr_on_plateau:
+    enabled: false
     patience: 3
     factor: 0.5
     min_lr: 0.000001
@@ -52,5 +56,5 @@ training:
 
 mlflow:
   experiment_name: "rwf2000-convlstm-changedetection"
-  run_name: "convlstm-depth9-diff3ch"
+  run_name: "twostream-depth9-diff3ch"
   log_models: true

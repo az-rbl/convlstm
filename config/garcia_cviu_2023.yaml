@@ -1,0 +1,61 @@
+# Configuration replicating Garcia-Cobo & SanMiguel (CVIU 2023)
+# "Human skeletons and change detection for efficient violence detection in surveillance videos"
+# Best performing model from Table 7 & Section 4 (Exact 62,583 trainable parameters)
+
+data:
+  dataset_path: "data/raw/RWF-2000"
+  skeletons_path: "data/processed/RWF-2000"  # Directory for preprocessed skeletons (MediaPipe with Gamma 0.67)
+  train_split: "train"
+  val_split: "val"
+  sequence_length: 50       # Number of consecutive difference frames T (51 frames total)
+  frame_stride: 1           # 51 frames uniformly subsampled from 150 frames (effective 10 fps)
+  image_size: [100, 100]    # [height, width] as specified in paper Section 4.2
+  channels: 3               # 3-channel RGB frame differences
+  batch_size: 10            # Batch size = 10 as specified in paper Section 4.2
+  normalize: false          # Keep frames in [0, 255] (BatchNormalization handles normalization)
+  shuffle: true
+  num_workers: 4
+  classes:
+    NonFight: 0
+    Fight: 1
+
+model:
+  name: "TwoStream_Garcia_CVIU_2023"
+  type: "two_stream"                # "two_stream" converging architecture
+  gamma: 0.67                       # Gamma correction factor applied before pose extraction
+  conv_filters: 9                   # 9-filter Conv2D layer on skeletons
+  convlstm_diff_filters: 9          # 9-filter ConvLSTM layer on frame differences
+  aggregator_filters: 32            # 32-filter temporal aggregator ConvLSTM
+  depth_multiplier: 2               # Depthwise conv post-processing (32*2 = 64 filters)
+  padding: "valid"                  # Original Keras valid padding
+  dense_units: [128, 16, 1]         # FC layer sequence: 128 -> 16 -> 1
+  dropout_rate: 0.0                 # No dropout in original model
+  recurrent_dropout: 0.0            # No recurrent dropout in original model
+  use_batch_norm: true
+
+training:
+  epochs: 50                        # Full 50 epochs as evaluated in paper Section 4.6
+  learning_rate: 0.001              # Fixed Adam learning rate = 0.001
+  optimizer: "adam"
+  loss: "binary_crossentropy"
+  metrics: ["accuracy"]
+  early_stopping:
+    enabled: false
+    patience: 7
+    monitor: "val_loss"
+    mode: "min"
+  reduce_lr_on_plateau:
+    enabled: false
+    patience: 3
+    factor: 0.5
+    min_lr: 0.000001
+  checkpoint:
+    save_best_only: true
+    monitor: "val_accuracy"
+    mode: "max"
+    dir: "checkpoints"
+
+mlflow:
+  experiment_name: "rwf2000-garcia-cviu-2023"
+  run_name: "two-stream-exact-replica"
+  log_models: true

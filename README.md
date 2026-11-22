@@ -126,17 +126,29 @@ pytest
 
 > ⚠️ **Important:** As an AI pair programmer, I will never initiate model training autonomously. Use the commands below when you are ready to run them yourself:
 
-### Train the Model
+### Replicate Exact Garcia-Cobo & SanMiguel (CVIU 2023) Experiment
+Run the standalone replication script (exact 62,583 trainable parameters, 100x100 resolution, 51 frames, batch size 10, Adam fixed lr 0.001, 50 epochs, seed 0):
+```bash
+python train_original.py
+# Dry run verification without starting training:
+python train_original.py --dry_run
+```
+Or via the modular training pipeline with the paper config:
+```bash
+python -m src.train --config config/garcia_cviu_2023.yaml
+```
+
+### Train with Flexible Default Config
 ```bash
 python -m src.train --config config/default.yaml
 ```
 
 ### Evaluate on Validation Set
 ```bash
-python -m src.evaluate --model_path checkpoints/best_convlstm_model.keras
+python -m src.evaluate --model_path checkpoints/best_model.h5 --config config/garcia_cviu_2023.yaml
 ```
 
 ### Run Prediction on a Single Video
 ```bash
-python -m src.predict --video path/to/sample.avi --model_path checkpoints/best_convlstm_model.keras
+python -m src.predict --video path/to/sample.avi --model_path checkpoints/best_model.h5 --config config/garcia_cviu_2023.yaml
 ```

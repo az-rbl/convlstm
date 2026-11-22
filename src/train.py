@@ -118,7 +118,8 @@ def train():
         target_size=(config.data.image_size[0], config.data.image_size[1]),
         batch_size=config.data.batch_size,
         shuffle=config.data.shuffle,
-        augment=True,
+        normalize=getattr(config.data, "normalize", False),
+        augment=getattr(config.data, "augment", False),
         two_stream=is_two_stream,
     )
     val_seq = RWF2000Sequence(
@@ -128,6 +129,7 @@ def train():
         target_size=(config.data.image_size[0], config.data.image_size[1]),
         batch_size=config.data.batch_size,
         shuffle=False,
+        normalize=getattr(config.data, "normalize", False),
         augment=False,
         two_stream=is_two_stream,
     )
@@ -183,15 +185,16 @@ def train():
             )
         )
 
-    training_callbacks.append(
-        callbacks.ReduceLROnPlateau(
-            monitor=config.training.early_stopping.monitor,
-            factor=config.training.reduce_lr_on_plateau.factor,
-            patience=config.training.reduce_lr_on_plateau.patience,
-            min_lr=config.training.reduce_lr_on_plateau.min_lr,
-            verbose=1,
+    if getattr(config.training.reduce_lr_on_plateau, "enabled", False):
+        training_callbacks.append(
+            callbacks.ReduceLROnPlateau(
+                monitor=config.training.early_stopping.monitor,
+                factor=config.training.reduce_lr_on_plateau.factor,
+                patience=config.training.reduce_lr_on_plateau.patience,
+                min_lr=config.training.reduce_lr_on_plateau.min_lr,
+                verbose=1,
+            )
         )
-    )
 
     # 6. Execute Training within MLflow Run
     with mlflow.start_run(run_name=config.mlflow.run_name):

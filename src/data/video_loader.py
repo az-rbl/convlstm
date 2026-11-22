@@ -60,11 +60,13 @@ def sample_frames_uniformly(
 ) -> np.ndarray:
     """Uniformly samples `num_samples` frames across the video length.
 
+    Matches Garcia-Cobo & SanMiguel (CVIU 2023):
+        frames_idx = np.round(np.linspace(0, total_frames - 1, num_samples)).astype(int)
     If video has fewer frames than requested, repeats the last frame.
     """
     total_frames = len(frames)
     if total_frames >= num_samples:
-        indices = np.linspace(0, total_frames - 1, num_samples, dtype=int)
+        indices = np.round(np.linspace(0, total_frames - 1, num_samples)).astype(int)
         return frames[indices]
     else:
         # Pad with last frame if video is shorter

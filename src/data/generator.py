@@ -18,11 +18,12 @@ class RWF2000Sequence(keras.utils.Sequence):
         self,
         split_dir: str,
         skeletons_dir: Optional[str] = None,
-        sequence_length: int = 16,
-        target_size: Tuple[int, int] = (112, 112),
-        batch_size: int = 8,
+        sequence_length: int = 50,
+        target_size: Tuple[int, int] = (100, 100),
+        batch_size: int = 10,
         shuffle: bool = True,
         class_mapping: Optional[Dict[str, int]] = None,
+        normalize: bool = False,
         augment: bool = False,
         two_stream: bool = True,
     ):
@@ -31,12 +32,13 @@ class RWF2000Sequence(keras.utils.Sequence):
         Args:
             split_dir: Directory pointing to train or val split (e.g. 'RWF-2000/train').
             skeletons_dir: Optional separate mirrored directory for skeleton videos (e.g. 'RWF-2000_skeletons/train').
-            sequence_length: Number of difference frames T.
+            sequence_length: Number of difference frames T (e.g. 50 diff frames from 51 sampled frames).
             target_size: (H, W).
-            batch_size: Batch size.
+            batch_size: Batch size (default 10 matching CVIU 2023).
             shuffle: Whether to shuffle sample order at each epoch end.
             class_mapping: Map from folder name to integer label (default: NonFight=0, Fight=1).
-            augment: Whether to apply random spatial flipping.
+            normalize: Whether to divide pixel values by 255.0 (default False matching CVIU 2023).
+            augment: Whether to apply random spatial flipping (default False matching CVIU 2023).
             two_stream: If True, returns ([raw_video, skeleton_video], labels).
                         If False, returns (diff_video, labels).
         """
@@ -47,6 +49,7 @@ class RWF2000Sequence(keras.utils.Sequence):
         self.target_size = target_size
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.normalize = normalize
         self.augment = augment
         self.two_stream = two_stream
         self.class_mapping = class_mapping or {"NonFight": 0, "Fight": 1}
@@ -118,7 +121,11 @@ class RWF2000Sequence(keras.utils.Sequence):
         """Loads raw frames and paired skeleton frames."""
         raw_frames = load_video_frames(video_path, target_size=self.target_size)
         raw_sampled = sample_frames_uniformly(raw_frames, num_samples=self.sequence_length + 1)
-        raw_tensor = (raw_sampled.astype(np.float32) / 255.0)
+        raw_tensor = (
+            raw_sampled.astype(np.float32) / 255.0
+            if self.normalize
+            else raw_sampled.astype(np.float32)
+        )
 
         skeleton_tensor = None
         if self.two_stream:
@@ -126,7 +133,11 @@ class RWF2000Sequence(keras.utils.Sequence):
             if skel_path and os.path.exists(skel_path):
                 skel_frames = load_video_frames(skel_path, target_size=self.target_size)
                 skel_sampled = sample_frames_uniformly(skel_frames, num_samples=self.sequence_length + 1)
-                skeleton_tensor = (skel_sampled.astype(np.float32) / 255.0)
+                skeleton_tensor = (
+                    skel_sampled.astype(np.float32) / 255.0
+                    if self.normalize
+                    else skel_sampled.astype(np.float32)
+                )
             else:
                 # Black background canvas fallback
                 skeleton_tensor = np.zeros_like(raw_tensor)

@@ -12,11 +12,12 @@ class DataConfig:
     skeletons_path: str = "data/processed/RWF-2000"
     train_split: str = "train"
     val_split: str = "val"
-    sequence_length: int = 16
+    sequence_length: int = 50
     frame_stride: int = 2
-    image_size: List[int] = field(default_factory=lambda: [112, 112])
+    image_size: List[int] = field(default_factory=lambda: [100, 100])
     channels: int = 3
-    batch_size: int = 8
+    batch_size: int = 10
+    normalize: bool = False
     shuffle: bool = True
     num_workers: int = 4
     classes: Dict[str, int] = field(
@@ -35,15 +36,16 @@ class ModelConfig:
     convlstm_diff_filters: int = 9
     aggregator_filters: int = 32
     depth_multiplier: int = 2
+    padding: str = "valid"
     dense_units: List[int] = field(default_factory=lambda: [128, 16, 1])
-    dropout_rate: float = 0.3
-    recurrent_dropout: float = 0.1
+    dropout_rate: float = 0.0
+    recurrent_dropout: float = 0.0
     use_batch_norm: bool = True
 
 
 @dataclass
 class EarlyStoppingConfig:
-    enabled: bool = True
+    enabled: bool = False
     patience: int = 7
     monitor: str = "val_loss"
     mode: str = "min"
@@ -51,6 +53,7 @@ class EarlyStoppingConfig:
 
 @dataclass
 class ReduceLROnPlateauConfig:
+    enabled: bool = False
     patience: int = 3
     factor: float = 0.5
     min_lr: float = 1e-6
@@ -66,8 +69,8 @@ class CheckpointConfig:
 
 @dataclass
 class TrainingConfig:
-    epochs: int = 30
-    learning_rate: float = 0.0001
+    epochs: int = 50
+    learning_rate: float = 0.001
     optimizer: str = "adam"
     loss: str = "binary_crossentropy"
     metrics: List[str] = field(
