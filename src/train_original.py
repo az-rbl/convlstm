@@ -13,18 +13,21 @@ Key specifications:
   - Batch size: 10, Epochs: 50
   - Random seed: 0
   - ModelCheckpoint on 'val_accuracy' (save_best_only=True)
+  - MLflow/DagsHub experiment tracking (falls back to local ./mlruns if no credentials)
 """
 
 import argparse
 import os
 import random
 import numpy as np
+import mlflow
 import tensorflow as tf
 import keras
-from keras import layers, callbacks
+from keras import callbacks
 
 from src.data.generator import RWF2000Sequence
 from src.models.two_stream import build_two_stream_model
+from src.utils.mlflow_logger import setup_mlflow_and_dagshub
 
 
 def set_seed(seed: int = 0):
@@ -76,6 +79,18 @@ def parse_args():
         help="Path to save best checkpoint",
     )
     parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="rwf2000-garcia-cviu-2023",
+        help="MLflow/DagsHub experiment name",
+    )
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default="two-stream-exact-replica",
+        help="MLflow run name",
+    )
+    parser.add_argument(
         "--dry_run",
         action="store_true",
         help="Verify model building, shapes, and pipeline initialization without running full training",
@@ -100,9 +115,13 @@ def main():
     print(f"Epochs:          {args.epochs}")
     print(f"Learning rate:   {args.lr} (Adam, fixed)")
     print(f"Checkpoint path: {args.save_path}")
+    print(f"MLflow experiment: {args.experiment_name}")
     print("==================================================================")
 
-    # 2. Build Exact Architecture (62,583 trainable parameters)
+    # 2. MLflow / DagsHub setup (falls back to ./mlruns if no credentials configured)
+    setup_mlflow_and_dagshub(experiment_name=args.experiment_name)
+
+    # 3. Build Exact Architecture (62,583 trainable parameters)
     model = build_two_stream_model(
         input_shape=(51, 100, 100, 3),
         conv_filters=9,
@@ -133,7 +152,7 @@ def main():
         print("\n[Dry Run] Model and pipeline verified successfully. Exiting without training.")
         return
 
-    # 3. Prepare Dataset Sequences
+    # 4. Prepare Dataset Sequences
     train_dir = os.path.join(args.dataset_path, "train")
     val_dir = os.path.join(args.dataset_path, "val")
 
@@ -178,7 +197,7 @@ def main():
     print(f"  Train samples: {len(train_generator.samples)} ({len(train_generator)} batches)")
     print(f"  Val samples:   {len(val_generator.samples)} ({len(val_generator)} batches)")
 
-    # 4. Configure Checkpoint Callback matching the original notebook
+    # 5. Configure Checkpoint Callback matching the original notebook
     os.makedirs(os.path.dirname(os.path.abspath(args.save_path)), exist_ok=True)
     checkpoint_cb = callbacks.ModelCheckpoint(
         filepath=args.save_path,
@@ -188,18 +207,63 @@ def main():
         verbose=1,
     )
 
-    # 5. Fit Model for 50 Epochs
-    print(f"\n[Training] Starting training for {args.epochs} epochs...")
-    history = model.fit(
-        train_generator,
-        epochs=args.epochs,
-        validation_data=val_generator,
-        callbacks=[checkpoint_cb],
-        verbose=2,
-    )
+    # 6. Per-epoch MLflow metric logging callback
+    class MLflowEpochCallback(callbacks.Callback):
+        def on_epoch_end(self, epoch, logs=None):
+            if logs:
+                for metric_name, value in logs.items():
+                    mlflow.log_metric(metric_name, float(value), step=epoch)
+
+    # 7. Execute Training inside MLflow run
+    print(f"\n[MLflow] Starting run '{args.run_name}' in experiment '{args.experiment_name}'...")
+    with mlflow.start_run(run_name=args.run_name):
+        # Log all hyperparameters upfront
+        mlflow.log_params({
+            "paper": "Garcia-Cobo & SanMiguel (CVIU 2023)",
+            "model_name": "Garcia_CVIU_2023_Replication",
+            "trainable_params": trainable_count,
+            "image_size": "100x100",
+            "frames": 51,
+            "sequence_length": 50,
+            "padding": "valid",
+            "batch_size": args.batch_size,
+            "epochs": args.epochs,
+            "learning_rate": args.lr,
+            "optimizer": "adam",
+            "dropout_rate": 0.0,
+            "recurrent_dropout": 0.0,
+            "seed": 0,
+            "conv_filters": 9,
+            "convlstm_diff_filters": 9,
+            "aggregator_filters": 32,
+            "depth_multiplier": 2,
+            "dense_units": "128-16-1",
+            "gamma": 0.67,
+            "pose_extractor": "mediapipe",
+        })
+
+        print(f"\n[Training] Starting training for {args.epochs} epochs...")
+        history = model.fit(
+            train_generator,
+            epochs=args.epochs,
+            validation_data=val_generator,
+            callbacks=[checkpoint_cb, MLflowEpochCallback()],
+            verbose=2,
+        )
+
+        # Log best metrics and checkpoint artifact
+        best_val_acc = max(history.history["val_accuracy"])
+        best_train_acc = max(history.history["accuracy"])
+        mlflow.log_metrics({
+            "best_val_accuracy": best_val_acc,
+            "best_train_accuracy": best_train_acc,
+        })
+        if os.path.exists(args.save_path):
+            mlflow.log_artifact(args.save_path, artifact_path="model_checkpoints")
 
     print("\n[Complete] Training completed successfully!")
     print(f"Best model saved to: {args.save_path}")
+    print(f"Best val accuracy: {best_val_acc:.4f}")
 
 
 if __name__ == "__main__":

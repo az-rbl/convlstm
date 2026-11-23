@@ -56,10 +56,10 @@ def setup_mlflow_and_dagshub(
             os.environ["MLFLOW_TRACKING_PASSWORD"] = token
             mlflow.set_tracking_uri(tracking_uri)
     elif not tracking_uri:
-        # Fallback to local tracking
-        tracking_uri = "./mlruns"
+        # Fallback to local SQLite backend (file store is deprecated in recent MLflow)
+        tracking_uri = "sqlite:///mlflow.db"
         mlflow.set_tracking_uri(tracking_uri)
-        print(f"[MLflow] Using local tracking URI: {tracking_uri}")
+        print(f"[MLflow] Using local SQLite tracking URI: {tracking_uri}")
     else:
         mlflow.set_tracking_uri(tracking_uri)
         print(f"[MLflow] Tracking URI set to: {tracking_uri}")
